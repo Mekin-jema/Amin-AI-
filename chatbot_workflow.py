@@ -3,6 +3,7 @@ from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langgraph.graph import START, END, StateGraph
 from langgraph.graph.message import add_messages
 from typing import TypedDict, Annotated
+from langgraph.checkpoint.memory import InMemorySaver
 import os
 from dotenv import load_dotenv
 
@@ -15,12 +16,12 @@ class chatState(TypedDict):
 
 # Initialize the LLM
 llm = ChatOpenAI(
-    model="openai/gpt-oss-20b",
+    # model="openai/gpt-oss-20b",
     # GPT-4 family
     # model="openai/gpt-4o-mini"       # 128K context | 16K output
     # model="openai/gpt-4o"            # 128K context | 16K output
     # model="openai/gpt-4.1"           # 1M  context   | 32K output
-    # model="openai/gpt-4.1-mini"      # 1M context   | 32K output
+    model="openai/gpt-4.1-mini"   ,   # 1M context   | 32K output
 
     # GPT-5 family
     # model="openai/gpt-5"             # 400K context | 128K output
@@ -40,6 +41,9 @@ llm = ChatOpenAI(
     base_url=os.getenv("OPENROUTER_BASE_URL"),
 )
 
+# Initialize the checkpoint
+checkpointer = InMemorySaver()
+
 # Build the graph
 graph = StateGraph(chatState)
 
@@ -53,25 +57,34 @@ graph.add_node("chat_node", chat_node)
 graph.add_edge(START, "chat_node")
 graph.add_edge("chat_node", END)
 
-# Compile the workflow
-workflow = graph.compile()
+# Compile the workflow with checkpoint
+workflow = graph.compile(checkpointer=checkpointer)
 
 def main():
     # Invoke the graph
-    initialize_state = {
-        "messages": [
-            HumanMessage(content="Hello, how are you?")
-        ]
+    thread_id = "thread-1" 
+    config={
+        "configurable": {
+            "thread_id": thread_id
+        }
     }
-    
-    print("Invoking workflow...")
-    result = workflow.invoke(initialize_state)
-    # print(result)
-    
-    print("\nResult Messages:")
-    for msg in result["messages"]:
-        role = "User" if isinstance(msg, HumanMessage) else "Assistant"
-        print(f"{role}: {msg.content}")
+
+    while True:
+        content=input("Enter your questions:")
+        initialize_state = {
+            "messages": [
+                HumanMessage(content=content)
+            ]
+        }
+        
+        print("Invoking workflow...")
+        result = workflow.invoke(initialize_state,config=config)
+        # print(result)
+        
+        print("\nResult Messages:")
+        for msg in result["messages"]:
+            role = "User" if isinstance(msg, HumanMessage) else "Assistant"
+            print(f"{role}: {msg.content}")
 
 if __name__ == "__main__":
     main()
